@@ -1,0 +1,322 @@
+// database/schema.prisma
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Enums ───────────────────────────────────────────────────────────────────
+
+enum Role {
+  USER
+  ADMIN
+}
+
+enum OrderStatus {
+  PENDING
+  CONFIRMED
+  PROCESSING
+  SHIPPED
+  DELIVERED
+  CANCELLED
+  REFUNDED
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  FAILED
+  REFUNDED
+}
+
+enum DonationStatus {
+  PENDING
+  COMPLETED
+  FAILED
+}
+
+enum CowStatus {
+  AVAILABLE
+  ADOPTED
+  RETIRED
+}
+
+enum AdoptionStatus {
+  ACTIVE
+  EXPIRED
+  CANCELLED
+}
+
+// ─── User ────────────────────────────────────────────────────────────────────
+
+model User {
+  id           String    @id @default(cuid())
+  email        String    @unique
+  passwordHash String
+  name         String
+  role         Role      @default(USER)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  addresses    Address[]
+  cart         Cart?
+  orders       Order[]
+  donations    Donation[]
+  adoptions    CowAdoption[]
+
+  @@index([email])
+}
+
+// ─── Address ─────────────────────────────────────────────────────────────────
+
+model Address {
+  id         String   @id @default(cuid())
+  userId     String?
+  label      String   @default("Home")
+  line1      String
+  line2      String?
+  city       String
+  state      String
+  postalCode String
+  country    String   @default("IN")
+  isDefault  Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  user       User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  orders     Order[]
+
+  @@index([userId])
+}
+
+// ─── Category ────────────────────────────────────────────────────────────────
+
+model Category {
+  id          String    @id @default(cuid())
+  name        String    @unique
+  slug        String    @unique
+  description String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  products    Product[]
+
+  @@index([slug])
+}
+
+// ─── Product ─────────────────────────────────────────────────────────────────
+
+model Product {
+  id          String     @id @default(cuid())
+  name        String
+  slug        String     @unique
+  description String?
+  price       Float
+  stock       Int        @default(0)
+  imageUrl    String?
+  isActive    Boolean    @default(true)
+  categoryId  String
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  category    Category   @relation(fields: [categoryId], references: [id])
+  cartItems   CartItem[]
+  orderItems  OrderItem[]
+
+  @@index([slug])
+  @@index([categoryId])
+  @@index([isActive])
+}
+
+// ─── Cart ────────────────────────────────────────────────────────────────────
+
+model Cart {
+  id        String     @id @default(cuid())
+  userId    String     @unique
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items     CartItem[]
+
+  @@index([userId])
+}
+
+model CartItem {
+  id        String   @id @default(cuid())
+  cartId    String
+  productId String
+  quantity  Int      @default(1)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  cart      Cart     @relation(fields: [cartId], references: [id], onDelete: Cascade)
+  product   Product  @relation(fields: [productId], references: [id])
+
+  @@unique([cartId, productId])
+  @@index([cartId])
+}
+
+// ─── Order ───────────────────────────────────────────────────────────────────
+
+model Order {
+  id              String        @id @default(cuid())
+  userId          String?
+  addressId       String
+  status          OrderStatus   @default(PENDING)
+  paymentStatus   PaymentStatus @default(PENDING)
+  totalAmount     Float
+  originalAmount  Float         @default(0)
+  discountAmount  Float         @default(0)
+  couponId        String?
+  couponCode      String?
+  notes           String?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  user            User?         @relation(fields: [userId], references: [id])
+  address         Address       @relation(fields: [addressId], references: [id])
+  coupon          Coupon?       @relation(fields: [couponId], references: [id])
+  items           OrderItem[]
+  payment         Payment?
+
+  @@index([userId])
+  @@index([status])
+  @@index([couponId])
+}
+
+model OrderItem {
+  id         String  @id @default(cuid())
+  orderId    String
+  productId  String
+  quantity   Int
+  unitPrice  Float
+  totalPrice Float
+
+  order      Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product    Product @relation(fields: [productId], references: [id])
+
+  @@index([orderId])
+}
+
+// ─── Donation ────────────────────────────────────────────────────────────────
+
+model Donation {
+  id        String         @id @default(cuid())
+  userId    String
+  amount    Float
+  message   String?
+  status    DonationStatus @default(PENDING)
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+
+  user      User           @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([status])
+}
+
+// ─── Cow ─────────────────────────────────────────────────────────────────────
+
+model Cow {
+  id          String        @id @default(cuid())
+  name        String
+  breed       String?
+  age         Int?
+  description String?
+  imageUrl    String?
+  status      CowStatus     @default(AVAILABLE)
+  adoptionFee Float         @default(0)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  adoptions   CowAdoption[]
+
+  @@index([status])
+}
+
+model CowAdoption {
+  id        String         @id @default(cuid())
+  cowId     String
+  userId    String
+  status    AdoptionStatus @default(ACTIVE)
+  startDate DateTime       @default(now())
+  endDate   DateTime?
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+
+  cow       Cow            @relation(fields: [cowId], references: [id])
+  user      User           @relation(fields: [userId], references: [id])
+
+  @@index([cowId])
+  @@index([userId])
+}
+
+// ─── Promoter / Coupon ────────────────────────────────────────────────────────
+
+// A promoter is anyone (influencer, affiliate, staff) who has a trackable code.
+model Promoter {
+  id        String    @id @default(cuid())
+  name      String
+  email     String    @unique
+  phone     String?
+  notes     String?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  coupons   Coupon[]
+
+  @@index([email])
+}
+
+enum DiscountType {
+  PERCENTAGE   // e.g. 10 → 10% off
+  FLAT         // e.g. 50 → ₹50 off
+}
+
+model Coupon {
+  id             String       @id @default(cuid())
+  code           String       @unique  // e.g. "PRIYA10"
+  description    String?
+  discountType   DiscountType @default(PERCENTAGE)
+  discountValue  Float        // percentage (0-100) or flat amount in ₹
+  minOrderAmount Float        @default(0)
+  maxUses        Int?         // null = unlimited
+  usedCount      Int          @default(0)
+  isActive       Boolean      @default(true)
+  expiresAt      DateTime?
+  promoterId     String?      // null = generic coupon, not linked to a promoter
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  promoter       Promoter?    @relation(fields: [promoterId], references: [id])
+  orders         Order[]
+
+  @@index([code])
+  @@index([promoterId])
+  @@index([isActive])
+}
+
+// ─── Razorpay payment tracking ────────────────────────────────────────────────
+
+model Payment {
+  id                String        @id @default(cuid())
+  orderId           String        @unique
+  razorpayOrderId   String        @unique  // from Razorpay
+  razorpayPaymentId String?                // filled after capture
+  razorpaySignature String?                // filled after verify
+  amount            Float
+  currency          String        @default("INR")
+  status            PaymentStatus @default(PENDING)
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+
+  order             Order         @relation(fields: [orderId], references: [id])
+
+  @@index([razorpayOrderId])
+  @@index([orderId])
+}
